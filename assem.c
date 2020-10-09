@@ -6,12 +6,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #define MAXLINE 80
 #define MAXNAME 10
 #define MAXREG 5
 
-char line[MAXLINE], oper[MAXNAME], rs[MAXREG], rt[MAXREG], rd[MAXREG], imm[MAXREG], shamt[MAXREG], funct[MAXREG], *s;
+char line[MAXLINE], oper[MAXNAME], rs[MAXREG], rt[MAXREG], rd[MAXREG], shamt[MAXREG], *s;
 char tempName[] = "temp.txt";
 
 //linked list node
@@ -45,10 +46,10 @@ union {
     unsigned int x;
     struct
     {
-        unsigned int op:6;
-        unsigned int rs:5;
-        unsigned int rt:5;
         unsigned int imm:16;
+        unsigned int rt:5;
+        unsigned int rs:5;
+        unsigned int op:6;
     } IType;
 } ITypeU;
 
@@ -57,8 +58,8 @@ union {
     unsigned int x;
     struct
     {
-        unsigned int op:6;
         unsigned int imm:26;
+        unsigned int op:6;
     } JType;
 } JTypeU;
 
@@ -124,7 +125,13 @@ char* getlabel(char* line){
 
 //trim label from line
 char* skiplabel(char* line){
-    return strchr(line,':');
+    char* temp = line;
+    if (strstr(line, ":") != NULL)
+    {
+        temp = strchr(line, ':');
+        temp[0] = ' ';
+    }
+    return temp;
 }
 
 //convert register to value
@@ -250,6 +257,10 @@ int opcodeValue(char* op){
     {
         return 43;
     }
+    if (strcmp(op, "j") == 0)
+    {
+        return 2;
+    }
 }
 
 //convert funct to value
@@ -362,19 +373,25 @@ int main() {
 
     //second pass, find commands
     pointer = 0;
+    unsigned int imm;
+    char* label;
     while (fgets(line, MAXLINE, temp)) {
-        //if not directive
-        if (!(strcmp(strtok(line,"\n"), ".text") == 0 || strcmp(strtok(line,"\n"), ".data") == 0))
-        {
-            s = skiplabel(line);
+        s = skiplabel(line);
 
+        //if not directive
+        if (!(strcmp(strtok(s,"\n"), ".text") == 0 || strcmp(strtok(s,"\n"), ".data") == 0))
+        {
             // 1. I 3 args
-            //if (sscanf(s, "%10s $%5s[^,],$%5s[^,],$%d", oper, rt, rs, imm) == 4)
-            //{
-                
-            //}
+            if (sscanf(s, "%10s $%5[^,],$%5[^,],%u", oper, rt, rs, &imm) == 4)
+            {
+                ITypeU.IType.op = opcodeValue(oper);
+                ITypeU.IType.rt = registerValue(rt);
+                ITypeU.IType.rs = registerValue(rs);
+                ITypeU.IType.imm = imm;
+                printf("%08x\n", ITypeU.x);
+            }
             // 2. R 3 args
-            if (sscanf(line, "%10s $%5[^,],$%5[^,],$%5s", oper, rd, rs, rt) == 4)
+            else if (sscanf(s, "%10s $%5[^,],$%5[^,],$%5s", oper, rd, rs, rt) == 4)
             {
                 RTypeU.RType.op = 0;
                 RTypeU.RType.rd = registerValue(rd);
@@ -382,33 +399,66 @@ int main() {
                 RTypeU.RType.rt = registerValue(rt);
                 RTypeU.RType.shamt = 0;
                 RTypeU.RType.funct = functValue(oper);
-                printf("%08x", RTypeU.x);
+                printf("%08x\n", RTypeU.x);
             }
             // 3. I branch
-            //else if (sscanf(s, "%10s $%5s[^,],$%5s[^,],$%5s", oper, rd, rs, rt) == 4)
-            //{
-
-            //}
+            else if (sscanf(s, "%10s $%5[^,],$%5[^,],%5s", oper, rs, rt, label) == 4)
+            {
+                ITypeU.IType.op = opcodeValue(oper);
+                ITypeU.IType.rt = registerValue(rt);
+                ITypeU.IType.rs = registerValue(rs);
+                ITypeU.IType.imm = searchLabel(&labels, label);
+                printf("%08x\n", ITypeU.x);
+            }
             // 4. R 2 args
-            //else if (sscanf(s, "%10s $%5s[^,],$%5s[^,],$%5s", oper, rd, rs, rt) == 4)
-            //{
-
-            //}
-            // 5. R 1 arg
-            //else if (sscanf(s, "%10s $%5s[^,],$%5s[^,],$%5s", oper, rd, rs, rt) == 4)
-            //{
-
-            //}
+            else if (sscanf(s, "%10s $%5[^,],$%5s", oper, rs, rt) == 3)
+            {
+                RTypeU.RType.op = 0;
+                RTypeU.RType.rd = 0;
+                RTypeU.RType.rs = registerValue(rs);
+                RTypeU.RType.rt = registerValue(rt);
+                RTypeU.RType.shamt = 0;
+                RTypeU.RType.funct = functValue(oper);
+                printf("%08x\n", RTypeU.x);
+            }
             // 6. I word
-            //else if (sscanf(s, "%10s $%5s[^,],$%5s[^,],$%5s", oper, rd, rs, rt) == 4)
-            //{
-
-            //}
+            else if (sscanf(s, "%10s $%5[^,],%5[^\(]($%5s)", oper, rt, label, rs) == 4)
+            {
+                ITypeU.IType.op = opcodeValue(oper);
+                ITypeU.IType.rt = registerValue(rt);
+                ITypeU.IType.rs = registerValue(rs);
+                ITypeU.IType.imm = searchLabel(&labels, label);
+                printf("%08x\n", ITypeU.x);
+            }
+            // 5. R 1 arg
+            else if (sscanf(s, "%10s $%5[^,]", oper, rd) == 2)
+            {
+                RTypeU.RType.op = 0;
+                RTypeU.RType.rd = registerValue(rd);
+                RTypeU.RType.rs = 0;
+                RTypeU.RType.rt = 0;
+                RTypeU.RType.shamt = 0;
+                RTypeU.RType.funct = functValue(oper);
+                printf("%08x\n", RTypeU.x);
+            }
+            // J types
+            else if (sscanf(s, "%10s %5s", oper, label) == 2)
+            {
+                JTypeU.JType.imm = searchLabel(&labels, label);
+                JTypeU.JType.op = opcodeValue(oper);
+                printf("%08x\n", JTypeU.x);
+            }
             // 7. syscall
-            //else if (sscanf(s, "%10s $%5s[^,],$%5s[^,],$%5s", oper, rd, rs, rt) == 4)
-            //{
-                
-            //}
+            else if (sscanf(s, "%10s", oper) == 1)
+            {
+                RTypeU.RType.op = 0;
+                RTypeU.RType.rd = 0;
+                RTypeU.RType.rs = 0;
+                RTypeU.RType.rt = 0;
+                RTypeU.RType.shamt = 0;
+                RTypeU.RType.funct = functValue(oper);
+                printf("%08x\n", RTypeU.x);
+            }
         }
     }
 
