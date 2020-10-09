@@ -228,6 +228,74 @@ int registerValue(char* reg){
     }
 }
 
+//convert opcode to value
+int opcodeValue(char* op){
+    if (strcmp(op, "addiu") == 0)
+    {
+        return 9;
+    }
+    if (strcmp(op, "beq") == 0)
+    {
+        return 4;
+    }
+    if (strcmp(op, "bne") == 0)
+    {
+        return 5;
+    }
+    if (strcmp(op, "lw") == 0)
+    {
+        return 35;
+    }
+    if (strcmp(op, "sw") == 0)
+    {
+        return 43;
+    }
+}
+
+//convert funct to value
+int functValue(char* op){
+    if (strcmp(op, "addu") == 0)
+    {
+        return 33;
+    }
+    if (strcmp(op, "and") == 0)
+    {
+        return 36;
+    }
+    if (strcmp(op, "div") == 0)
+    {
+        return 26;
+    }
+    if (strcmp(op, "mfhi") == 0)
+    {
+        return 16;
+    }
+    if (strcmp(op, "mflo") == 0)
+    {
+        return 18;
+    }
+    if (strcmp(op, "mult") == 0)
+    {
+        return 24;
+    }
+    if (strcmp(op, "or") == 0)
+    {
+        return 37;
+    }
+    if (strcmp(op, "slt") == 0)
+    {
+        return 42;
+    }
+    if (strcmp(op, "subu") == 0)
+    {
+        return 35;
+    }
+    if (strcmp(op, "syscall") == 0)
+    {
+        return 12;
+    }
+}
+
 int main() {
     //vars
     char* outputString = "";
@@ -309,11 +377,11 @@ int main() {
             if (sscanf(line, "%10s $%5[^,],$%5[^,],$%5s", oper, rd, rs, rt) == 4)
             {
                 RTypeU.RType.op = 0;
-                RTypeU.RType.rd = 16;
-                RTypeU.RType.rs = 0;
-                RTypeU.RType.rt = 0;
+                RTypeU.RType.rd = registerValue(rd);
+                RTypeU.RType.rs = registerValue(rs);
+                RTypeU.RType.rt = registerValue(rt);
                 RTypeU.RType.shamt = 0;
-                RTypeU.RType.funct = 33;
+                RTypeU.RType.funct = functValue(oper);
                 printf("%08x", RTypeU.x);
             }
             // 3. I branch
