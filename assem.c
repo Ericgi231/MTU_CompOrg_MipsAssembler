@@ -1,7 +1,7 @@
 /*
  *  CS3421 Assignment 2
  *  Name: Eric Grant
- *
+ *  Assembler to convert from mips instructions to machine code
  */
 #include <stdio.h>
 #include <string.h>
@@ -307,6 +307,25 @@ int functValue(char* op){
     }
 }
 
+//remove leading spaces from string
+char* removeLeadingSpaces(char* str) 
+{ 
+    static char str1[99]; 
+    int count = 0, j, k; 
+
+    while (str[count] == ' ') { 
+        count++; 
+    } 
+  
+    for (j = count, k = 0; 
+         str[j] != '\0'; j++, k++) { 
+        str1[k] = str[j]; 
+    } 
+    str1[k] = '\0'; 
+  
+    return str1; 
+} 
+
 int main() {
     //vars
     char* outputString = "";
@@ -321,14 +340,17 @@ int main() {
 
     //first pass, save stdin to file for repeat reading
     //count instructions and data
+    //save GP
     //find labels
     int instructionCount = 0, dataCount = 0;
     int countType = 0; //0 = none, 1 = instruction, 2 = data
     int pointer = 0;
+    int gpPointer;
+    int num;
     while (fgets(line, MAXLINE, stdin)) {
         //print line to temp file for later use
         fprintf(temp, "%s", line);
-        
+
         //if line contains label, add to list of labels
         if (strstr(line, ":") != NULL)
         {
@@ -336,7 +358,14 @@ int main() {
         }
 
         //if not directive, increment address pointer
-        if (!(strcmp(strtok(line,"\n"), ".text") == 0 || strcmp(strtok(line,"\n"), ".data") == 0))
+        if (sscanf(line, "%10s %d", oper, &num) == 2)
+        {
+            if (strcmp(oper, ".space") == 0)
+            {
+                pointer = pointer + num;
+            }
+        } 
+        else if (!(strcmp(strtok(line,"\n"), ".text") == 0 || strcmp(strtok(line,"\n"), ".data") == 0))
         {
             pointer = pointer + 4;
         }
@@ -351,6 +380,7 @@ int main() {
         {
             countType = 2;
             dataCount = -1;
+            gpPointer = pointer;
         }
 
         //increment line counters
@@ -374,12 +404,51 @@ int main() {
     //second pass, find commands
     pointer = 0;
     unsigned int imm;
-    char* label;
+    char* label, *part = "", *numbers = "";
+    int mode = 0; //0 = none, 1 = .text, 2 = .data
+    int spacePrinted = 0;
     while (fgets(line, MAXLINE, temp)) {
         s = skiplabel(line);
 
-        //if not directive
-        if (!(strcmp(strtok(s,"\n"), ".text") == 0 || strcmp(strtok(s,"\n"), ".data") == 0))
+        //check for .text and .data directive
+        if (strcmp(strtok(s,"\n"), ".text") == 0)
+        {
+            mode = 1;
+        } else if (strcmp(strtok(s,"\n"), ".data") == 0) {
+            mode = 2;
+        }
+
+        //check for .space directive
+        if (sscanf(s, "%10s %u", oper, &imm) == 2)
+        {
+            if (strcmp(oper, ".space") == 0)
+            {
+                for (size_t i = 0; i < imm; i++)
+                {
+                    printf("%08x\n", 0);
+                    pointer = pointer + 1;
+                }
+
+                spacePrinted = 1;
+            }
+        }
+
+        //if mode is 2, read words
+        if (strcmp(strtok(s,"\n"), ".data") != 0 && mode == 2 && spacePrinted == 0)
+        {
+            s = removeLeadingSpaces(s);
+            
+            numbers = strchr(s, ' ');
+            part = strtok(numbers, ",");
+            while(part != NULL){
+                printf("%08x\n", atoi(part));
+                part = strtok(NULL, ",");
+                pointer = pointer + 4;
+            }
+        }
+
+        //if not .text or .data directive and mode is 1
+        if (!(strcmp(strtok(s,"\n"), ".text") == 0 || strcmp(strtok(s,"\n"), ".data") == 0) && mode == 1 && spacePrinted == 0)
         {
             // 1. I 3 args
             if (sscanf(s, "%10s $%5[^,],$%5[^,],%u", oper, rt, rs, &imm) == 4)
@@ -391,7 +460,7 @@ int main() {
                 printf("%08x\n", ITypeU.x);
             }
             // 2. R 3 args
-            else if (sscanf(s, "%10s $%5[^,],$%5[^,],$%5s", oper, rd, rs, rt) == 4)
+            else if (sscanf(s, "%10s $%5[^,],$%5[^,],$%5[^# ]", oper, rd, rs, rt) == 4)
             {
                 RTypeU.RType.op = 0;
                 RTypeU.RType.rd = registerValue(rd);
@@ -402,16 +471,16 @@ int main() {
                 printf("%08x\n", RTypeU.x);
             }
             // 3. I branch
-            else if (sscanf(s, "%10s $%5[^,],$%5[^,],%5s", oper, rs, rt, label) == 4)
+            else if (sscanf(s, "%10s $%5[^,],$%5[^,],%5[^# ]", oper, rs, rt, label) == 4)
             {
                 ITypeU.IType.op = opcodeValue(oper);
                 ITypeU.IType.rt = registerValue(rt);
                 ITypeU.IType.rs = registerValue(rs);
-                ITypeU.IType.imm = searchLabel(&labels, label);
+                ITypeU.IType.imm = (searchLabel(&labels, label) - pointer) / 4;
                 printf("%08x\n", ITypeU.x);
             }
             // 4. R 2 args
-            else if (sscanf(s, "%10s $%5[^,],$%5s", oper, rs, rt) == 3)
+            else if (sscanf(s, "%10s $%5[^,],$%5[^# ]", oper, rs, rt) == 3)
             {
                 RTypeU.RType.op = 0;
                 RTypeU.RType.rd = 0;
@@ -422,16 +491,18 @@ int main() {
                 printf("%08x\n", RTypeU.x);
             }
             // 6. I word
-            else if (sscanf(s, "%10s $%5[^,],%5[^\(]($%5s)", oper, rt, label, rs) == 4)
+            else if (sscanf(s, "%10s $%5[^,],%5[^\(]($%5[^)])", oper, rt, label, rs) == 4)
             {
                 ITypeU.IType.op = opcodeValue(oper);
                 ITypeU.IType.rt = registerValue(rt);
                 ITypeU.IType.rs = registerValue(rs);
-                ITypeU.IType.imm = searchLabel(&labels, label);
+
+                ITypeU.IType.imm = searchLabel(&labels, label) - gpPointer;
+
                 printf("%08x\n", ITypeU.x);
             }
             // 5. R 1 arg
-            else if (sscanf(s, "%10s $%5[^,]", oper, rd) == 2)
+            else if (sscanf(s, "%10s $%5[^,# ]", oper, rd) == 2)
             {
                 RTypeU.RType.op = 0;
                 RTypeU.RType.rd = registerValue(rd);
@@ -442,14 +513,18 @@ int main() {
                 printf("%08x\n", RTypeU.x);
             }
             // J types
-            else if (sscanf(s, "%10s %5s", oper, label) == 2)
+            else if (sscanf(s, "%10s %5[^# ]", oper, label) == 2)
             {
-                JTypeU.JType.imm = searchLabel(&labels, label);
-                JTypeU.JType.op = opcodeValue(oper);
-                printf("%08x\n", JTypeU.x);
+                //hard coded to avoid error with .space
+                if (strcmp(oper, "j") == 0)
+                {
+                    JTypeU.JType.imm = searchLabel(&labels, label) / 4;
+                    JTypeU.JType.op = opcodeValue(oper);
+                    printf("%08x\n", JTypeU.x);
+                }
             }
             // 7. syscall
-            else if (sscanf(s, "%10s", oper) == 1)
+            else if (sscanf(s, "%10[^# 0123456789]", oper) == 1)
             {
                 RTypeU.RType.op = 0;
                 RTypeU.RType.rd = 0;
@@ -459,7 +534,11 @@ int main() {
                 RTypeU.RType.funct = functValue(oper);
                 printf("%08x\n", RTypeU.x);
             }
+
+            pointer = pointer + 4;
         }
+
+        spacePrinted = 0;
     }
 
     //close and delete temp file
